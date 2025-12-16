@@ -1,3 +1,5 @@
+![Go](https://img.shields.io/badge/Language-Go-00ADD8?logo=go)
+
 ## API em memória com Go Language
 
 ### Contexto
@@ -29,6 +31,3 @@ Ou
 go build 
 ./main
 ```
-
-### Badges
-![Go](https://img.shields.io/badge/Language-Go-00ADD8?logo=go)
