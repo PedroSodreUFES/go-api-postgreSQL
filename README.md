@@ -14,6 +14,7 @@ CRUD de usuários contendo id, nome, sobrenome e biografia.
 + Go Language
 + Chi framework
 + Pgx
++ Google UUID
 + Pacote json
 + Pacote errors
 + Pacote log
