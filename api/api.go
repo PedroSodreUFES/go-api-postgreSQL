@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,16 +12,17 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewHandler(db map[uuid.UUID]types.User) http.Handler {
+func NewHandler(db *pgxpool.Pool) http.Handler {
 	r := chi.NewMux()
 
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 
-	r.Get("/users", handleListUsers(db))
+	// r.Get("/users", handleListUsers(db))
 	r.Get("/user/{id}", handleGetUserById(db))
 	r.Delete("/user/{id}", handleDeleteUserById(db))
 	r.Put("/user/{id}", handlePutUser(db))
@@ -54,7 +56,7 @@ func sendJSON(w http.ResponseWriter, resp Response, status int) {
 	}
 }
 
-func handlePostUser(db map[uuid.UUID]types.User) http.HandlerFunc {
+func handlePostUser(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 10000)
 		data, err := io.ReadAll(r.Body)
@@ -91,19 +93,21 @@ func handlePostUser(db map[uuid.UUID]types.User) http.HandlerFunc {
 			return
 		}
 
-		id, err := uuid.NewRandom()
+		query := `
+			INSERT INTO users (first_name, last_name, biography) 
+			VALUES ($1, $2, $3)
+			RETURNING id;
+		`
+		err = db.QueryRow(context.Background(), query, user.FirstName, user.LastName, user.Biography).Scan(&user.ID)
 		if err != nil {
-			sendJSON(w, Response{Error: "Could not generate uuid."}, http.StatusInternalServerError)
+			sendJSON(w, Response{Error: "User creation failed."}, http.StatusInternalServerError)
 			return
 		}
-
-		user.ID = id.String()
-		db[id] = user
 		sendJSON(w, Response{Data: user}, http.StatusCreated)
 	}
 }
 
-func handleGetUserById(db map[uuid.UUID]types.User) http.HandlerFunc {
+func handleGetUserById(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
 		id, err := uuid.Parse(idStr)
@@ -112,17 +116,23 @@ func handleGetUserById(db map[uuid.UUID]types.User) http.HandlerFunc {
 			return
 		}
 
-		user, ok := db[id]
-		if !ok {
+		query := `
+			SELECT id, first_name, last_name, biography
+			FROM users
+			WHERE id = $1;
+		`
+		var user types.User
+		err = db.QueryRow(context.Background(), query, id).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Biography)
+		if err != nil {
 			sendJSON(w, Response{Error: "User not found."}, http.StatusNotFound)
 			return 
 		}
-
+		
 		sendJSON(w, Response{Data: user}, http.StatusOK)
 	}
 }
 
-func handleDeleteUserById(db map[uuid.UUID]types.User) http.HandlerFunc {
+func handleDeleteUserById(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := chi.URLParam(r, "id")
 		id, err := uuid.Parse(idStr)
@@ -131,14 +141,31 @@ func handleDeleteUserById(db map[uuid.UUID]types.User) http.HandlerFunc {
 			return 
 		}
 
-		user, ok := db[id]
-		if !ok {
+		// ve se o usuário existe
+		query := `
+			SELECT id, first_name, last_name, biography
+			FROM users
+			WHERE id = $1;
+		`
+		var user types.User
+		err = db.QueryRow(context.Background(), query, id).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Biography)
+		if err != nil {
 			sendJSON(w, Response{Error: "User not found."}, http.StatusNotFound)
 			return 
 		}
 
-		delete(db, id)
-		sendJSON(w, Response{Data: user}, http.StatusOK)
+		// deletar o usuário
+		query = `
+			DELETE FROM users
+			WHERE id = $1;
+		`
+		_, err = db.Exec(context.Background(),query, id)
+		if err != nil {
+			sendJSON(w, Response{Error: "Could not delete user."}, http.StatusNotFound)
+			return 
+		}
+
+		sendJSON(w, Response{}, http.StatusNoContent)
 	}
 }
 
@@ -153,7 +180,7 @@ func handleListUsers(db map[uuid.UUID]types.User) http.HandlerFunc {
 	}
 }
 
-func handlePutUser(db map[uuid.UUID]types.User) http.HandlerFunc {
+func handlePutUser(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 10000)
 		data, err := io.ReadAll(r.Body)
@@ -196,15 +223,32 @@ func handlePutUser(db map[uuid.UUID]types.User) http.HandlerFunc {
 			sendJSON(w, Response{Error: "Invalid UUID."}, http.StatusBadRequest)
 			return
 		}
-
-		_, ok := db[id]
-		if !ok {
+		
+		// ve se o usuário existe
+		query := `
+			SELECT id, first_name, last_name, biography
+			FROM users
+			WHERE id = $1;
+		`
+		var user types.User
+		err = db.QueryRow(context.Background(), query, id).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Biography)
+		if err != nil {
 			sendJSON(w, Response{Error: "User not found."}, http.StatusNotFound)
 			return 
 		}
 
+		// atualizar o usuário
+		query = `
+			UPDATE users
+			SET first_name = $1, last_name = $2, biography = $3
+			WHERE id = $4;
+		`
+		_, err = db.Exec(context.Background(),query, userUpdated.FirstName, userUpdated.LastName, userUpdated.Biography, id)
+		if err != nil {
+			sendJSON(w, Response{Error: "User not found."}, http.StatusNotFound)
+			return 
+		}
 		userUpdated.ID = id.String()
-		db[id] = userUpdated
 		sendJSON(w, Response{Data: userUpdated}, http.StatusOK)
 	}
 }
