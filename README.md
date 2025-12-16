@@ -24,10 +24,17 @@ CRUD de usuários contendo id, nome, sobrenome e biografia.
 
 ### Como rodar o programa
 ```bash
+docker-compose up -d
 go run .
 ```
 Ou
 ```bash
+docker-compose up -d
 go build 
 ./main
+```
+
+### Como parar o container Docker e excluir os dados
+```bash
+docker-compose down -v
 ```
