@@ -22,11 +22,11 @@ func NewHandler(db *pgxpool.Pool) http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 
-	// r.Get("/users", handleListUsers(db))
+	r.Post("/user", handlePostUser(db))
 	r.Get("/user/{id}", handleGetUserById(db))
 	r.Delete("/user/{id}", handleDeleteUserById(db))
+	r.Get("/users", handleListUsers(db))
 	r.Put("/user/{id}", handlePutUser(db))
-	r.Post("/user", handlePostUser(db))
 
 	return r
 }
@@ -169,11 +169,27 @@ func handleDeleteUserById(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-func handleListUsers(db map[uuid.UUID]types.User) http.HandlerFunc {
+func handleListUsers(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		users := make([]types.User, 0, len(db))
+		query := `
+			SELECT id, first_name, last_name, biography
+			FROM users;
+		`
+		rows, err := db.Query(context.Background(), query)
+		if err != nil {
+			sendJSON(w, Response{Error: "Could not list users."}, http.StatusInternalServerError)
+			return 
+		}
+		defer rows.Close()
 
-		for _, user := range db {
+		var users []types.User = []types.User{}
+		for rows.Next() {
+			var user types.User
+			err := rows.Scan(&user.ID, &user.FirstName, &user.LastName, &user.Biography)
+			if err != nil {
+				sendJSON(w, Response{Error: "Could not list users."}, http.StatusInternalServerError)
+				return 
+			}
 			users = append(users, user)
 		}
 		sendJSON(w, Response{Data: users}, http.StatusOK)
@@ -223,7 +239,7 @@ func handlePutUser(db *pgxpool.Pool) http.HandlerFunc {
 			sendJSON(w, Response{Error: "Invalid UUID."}, http.StatusBadRequest)
 			return
 		}
-		
+
 		// ve se o usuário existe
 		query := `
 			SELECT id, first_name, last_name, biography

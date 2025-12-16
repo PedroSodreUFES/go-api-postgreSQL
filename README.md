@@ -13,7 +13,7 @@ CRUD de usuários contendo id, nome, sobrenome e biografia.
 ### Tecnologias usadas
 + Go Language
 + Chi framework
-+ Google UUID
++ Pgx
 + Pacote json
 + Pacote errors
 + Pacote log
