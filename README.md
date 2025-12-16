@@ -1,6 +1,6 @@
 ![Go](https://img.shields.io/badge/Language-Go-00ADD8?logo=go)
 
-## API em memória com Go Language
+## API com Go Language e PostgreSQL
 
 ### Contexto
 CRUD de usuários contendo id, nome, sobrenome e biografia.
